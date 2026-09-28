@@ -27,7 +27,7 @@ STOCK_CSV="/data/stock_data.csv"
 WEATHER_CSV="/data/weather.csv"
 
 # Output root
-OUT_ROOT="./procti_submission_code"
+OUT_ROOT="./ProCTI"
 
 # Device
 DEVICE="cuda:0"
