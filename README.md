@@ -14,7 +14,7 @@ The pipeline automatically:
 Repository Structure
 ------------------------------------------------------------
 
-procti_submission_code/
+ProCTI/
 
 │── run_full_pipeline.sh
 
