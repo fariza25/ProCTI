@@ -11,7 +11,7 @@ set -euo pipefail
 # -----------------------------
 # USER PATHS
 # -----------------------------
-CODE_DIR="./procti_submission_code"
+CODE_DIR="./ProCTI"
 
 BEIJING_MASK_SCRIPT="make_beijing_maskbank.py"
 GAIT_MASK_SCRIPT="make_gait_maskbank.py"
