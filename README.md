@@ -1,6 +1,6 @@
-# [NeurIPS'26] ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation
+# ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation
 
-This folder contains the full experimental pipeline for ProCTI and multiple baseline methods to reproduce the main results of "ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation", accepted at the 40th Conference on Neural Information Processing Systems (NeurIPS 2026).
+Official repository of ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation (NeurIPS 2026). This repository contains the full experimental pipeline for ProCTI and multiple baseline methods to reproduce the main results of the paper. 
 
 The pipeline automatically:
 
