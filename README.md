@@ -15,7 +15,9 @@ Repository Structure
 ------------------------------------------------------------
 
 procti_submission_code/
+
 │── run_full_pipeline.sh
+
 │── requirements.txt
 │── data/
 │── maskbanks/
