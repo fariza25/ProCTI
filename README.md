@@ -19,12 +19,19 @@ procti_submission_code/
 │── run_full_pipeline.sh
 
 │── requirements.txt
+
 │── data/
+
 │── maskbanks/
+
 │── channeldropassets/
+
 │── ProCTI/
+
 │── baselines/
+
 │── _pipeline_logs/
+
 
 ------------------------------------------------------------
 1. Create Python Virtual Environment, Install Dependencies
