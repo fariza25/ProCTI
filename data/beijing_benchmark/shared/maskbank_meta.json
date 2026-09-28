@@ -1,0 +1,40 @@
+{
+  "windows_dir": "/beijing_benchmark/shared",
+  "out_dir": "/beijing_benchmark/shared",
+  "lm": 6,
+  "ratios": [
+    0.1,
+    0.3,
+    0.5,
+    0.7
+  ],
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "val_shape": [
+    683,
+    96,
+    11
+  ],
+  "test_shape": [
+    657,
+    96,
+    11
+  ],
+  "files": [
+    "val_maskbank_seed1.npz",
+    "test_maskbank_seed1.npz",
+    "val_maskbank_seed2.npz",
+    "test_maskbank_seed2.npz",
+    "val_maskbank_seed3.npz",
+    "test_maskbank_seed3.npz",
+    "val_maskbank_seed4.npz",
+    "test_maskbank_seed4.npz",
+    "val_maskbank_seed5.npz",
+    "test_maskbank_seed5.npz"
+  ]
+}

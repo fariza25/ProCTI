@@ -1,0 +1,79 @@
+model:
+  target: Models.interpretable_diffusion.gaussian_diffusion.Diffusion_TS
+  params:
+    # IMPORTANT: seq_length must match the dataset window
+    seq_length: 96
+    feature_size: 7          # ETTm1 vars: HUFL,HULL,MUFL,MULL,LUFL,LULL,OT
+    n_layer_enc: 3
+    n_layer_dec: 2
+    d_model: 64              # 4 x 16
+    timesteps: 500
+    sampling_timesteps: 500
+    loss_type: 'l1'
+    beta_schedule: 'cosine'
+    n_heads: 4
+    mlp_hidden_times: 4
+    attn_pd: 0.0
+    resid_pd: 0.0
+    kernel_size: 1
+    padding_size: 0
+
+solver:
+  base_lr: 1.0e-5
+  max_epochs: 18000
+  results_folder: ./Checkpoints_ettm1
+  gradient_accumulate_every: 2
+  save_cycle: 1800  # max_epochs // 10
+  ema:
+    decay: 0.995
+    update_interval: 10
+
+  scheduler:
+    target: engine.lr_sch.ReduceLROnPlateauWithWarmup
+    params:
+      factor: 0.5
+      patience: 4000
+      min_lr: 1.0e-5
+      threshold: 1.0e-1
+      threshold_mode: rel
+      warmup_lr: 8.0e-4
+      warmup: 500
+      verbose: False
+
+dataloader:
+  # Training dataloader uses the first 80% (chronological) of sliding windows
+  train_dataset:
+    target: Utils.Data_utils.real_datasets.CustomDataset
+    params:
+      name: etth
+      data_root: ./Data/datasets/ETTm1.csv   # <-- change if your path differs
+      window: 96                              # = seq_length; stride=1 by default
+      proportion: 0.8                         # first 80% windows = train
+      save2npy: True
+      neg_one_to_one: True                    # [-1, 1] internal scaling
+      seed: 123
+      period: train                           # must be "train" for this class
+
+  # "Validation" here is provided by the test_dataset (last 20% windows)
+  test_dataset:
+    target: Utils.Data_utils.real_datasets.CustomDataset
+    params:
+      name: etth
+      data_root: ./Data/datasets/ETTm1.csv   # same file, different period
+      window: 96
+      proportion: 0.8                         # last 20% windows = val/test
+      save2npy: True
+      neg_one_to_one: True
+      seed: 123
+      period: test                            # must be "test" for this class
+      style: separate                         # used for imputation masking
+      distribution: geometric                 # geometric masking (paper protocol)
+      mean_mask_length: 3
+    # Sampling / guidance hyperparams for imputation/forecasting runs
+    coefficient: 1.0e-2
+    step_size: 5.0e-2
+    sampling_steps: 200
+
+  batch_size: 128
+  sample_size: 256
+  shuffle: True

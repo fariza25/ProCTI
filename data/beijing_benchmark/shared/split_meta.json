@@ -1,0 +1,75 @@
+{
+  "data_dir": "/beijing_benchmark/raw_data",
+  "seq_len": 96,
+  "stride": 96,
+  "features": [
+    "PM2.5",
+    "PM10",
+    "SO2",
+    "NO2",
+    "CO",
+    "O3",
+    "TEMP",
+    "PRES",
+    "DEWP",
+    "RAIN",
+    "WSPM"
+  ],
+  "num_features": 11,
+  "dropna_rows_before_windowing": true,
+  "allow_partial_nan_windows": false,
+  "split_seed": 1,
+  "train_stations": [
+    "Dingling",
+    "Dongsi",
+    "Guanyuan",
+    "Wanliu",
+    "Changping",
+    "Huairou",
+    "Aotizhongxin",
+    "Nongzhanguan"
+  ],
+  "val_stations": [
+    "Wanshouxigong",
+    "Tiantan"
+  ],
+  "test_stations": [
+    "Shunyi",
+    "Gucheng"
+  ],
+  "shape_train": [
+    2649,
+    96,
+    11
+  ],
+  "shape_val": [
+    683,
+    96,
+    11
+  ],
+  "shape_test": [
+    657,
+    96,
+    11
+  ],
+  "station_window_counts": {
+    "train": {
+      "Dingling": 327,
+      "Dongsi": 316,
+      "Guanyuan": 336,
+      "Wanliu": 320,
+      "Changping": 341,
+      "Huairou": 332,
+      "Aotizhongxin": 332,
+      "Nongzhanguan": 345
+    },
+    "val": {
+      "Wanshouxigong": 341,
+      "Tiantan": 342
+    },
+    "test": {
+      "Shunyi": 318,
+      "Gucheng": 339
+    }
+  }
+}

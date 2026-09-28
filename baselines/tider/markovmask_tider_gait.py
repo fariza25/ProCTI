@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+
+import os, sys, re, random, argparse
+from typing import List, Dict, Tuple
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn.functional as F
+import importlib.util
+
+
+# -----------------------------
+# Repro
+# -----------------------------
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def parse_ratios(s: str) -> List[float]:
+    return [float(x.strip()) for x in s.split(",") if x.strip()]
+
+
+# -----------------------------
+# Markov keep-mask (segment-based) with correct stationary distribution
+# -----------------------------
+def markov_keep_mask_KT(K: int, T: int, r_masked: float, lm: float, rng: np.random.Generator) -> np.ndarray:
+    """
+    keepmask (K,T): 1=kept/observed, 0=masked
+    Markov segments along time for each channel independently.
+    """
+    assert 0.0 < r_masked < 1.0
+    assert lm > 0.0
+    r_keep = 1.0 - r_masked
+
+    p_m = 1.0 / lm
+    p_u = p_m * (1.0 - r_keep) / max(r_keep, 1e-12)
+    p = [p_m, p_u]  # state 0 masked, 1 keep
+
+    out = np.ones((K, T), dtype=np.float32)
+    for k in range(K):
+        state = int(rng.random() < r_keep)
+        for t in range(T):
+            out[k, t] = state
+            if rng.random() < p[state]:
+                state = 1 - state
+    return out
+
+
+# -----------------------------
+# Safe import of TIDER
+# -----------------------------
+def import_tider_class(tider_py: str):
+    """Import TIDER class from a python file safely (avoid argparse side effects)."""
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [tider_py]
+        spec = importlib.util.spec_from_file_location("tider_mod", tider_py)
+        mod = importlib.util.module_from_spec(spec)
+        assert spec is not None and spec.loader is not None
+        spec.loader.exec_module(mod)
+    finally:
+        sys.argv = old_argv
+    if not hasattr(mod, "TIDER"):
+        raise AttributeError(f"{tider_py} loaded, but no TIDER class found.")
+    return mod.TIDER
+
+
+# -----------------------------
+# GAIT helpers 
+# -----------------------------
+USER_RE = re.compile(r"_ID(\d+)_", re.IGNORECASE)
+
+
+def list_gait_files(data_dir: str) -> List[str]:
+    files = []
+    for fn in os.listdir(data_dir):
+        if fn.lower().endswith(".csv"):
+            files.append(os.path.join(data_dir, fn))
+    if not files:
+        raise ValueError(f"No .csv files found in {data_dir}")
+    return sorted(files)
+
+
+def user_id_from_name(path: str) -> str:
+    m = USER_RE.search(os.path.basename(path))
+    if not m:
+        raise ValueError(f"Could not parse user ID from filename: {os.path.basename(path)}")
+    return m.group(1)
+
+
+def read_gait_csv(path: str) -> np.ndarray:
+    # automatic-ou-gaitdata: csv with two header rows
+    df = pd.read_csv(path, skiprows=2, header=None)
+    arr = df.values.astype(np.float32)
+    if arr.ndim != 2 or arr.shape[1] < 1:
+        raise ValueError(f"Bad array shape from {path}: {arr.shape}")
+    arr[~np.isfinite(arr)] = np.nan
+    return arr
+
+
+def windows_from_files(file_list: List[str], seq_len: int) -> np.ndarray:
+    windows = []
+    for p in file_list:
+        arr = read_gait_csv(p)  # (T,K)
+        T, K = arr.shape
+        n_win = T // seq_len
+        if n_win <= 0:
+            continue
+        windows.append(arr[: n_win * seq_len].reshape(n_win, seq_len, K))
+    if not windows:
+        raise ValueError("No windows formed (seq_len may be too large or files too short).")
+    return np.concatenate(windows, axis=0).astype(np.float32)
+
+
+def split_users(files: List[str], seed: int, train_ratio=0.7, val_ratio=0.15):
+    by_user: Dict[str, List[str]] = {}
+    for p in files:
+        uid = user_id_from_name(p)
+        by_user.setdefault(uid, []).append(p)
+
+    users = sorted(by_user.keys())
+    rng = np.random.default_rng(seed)
+    rng.shuffle(users)
+
+    n = len(users)
+    n_train = int(n * train_ratio)
+    n_val = int(n * val_ratio)
+
+    train_u = users[:n_train]
+    val_u = users[n_train:n_train + n_val]
+    test_u = users[n_train + n_val:]
+
+    def gather(uids):
+        out = []
+        for u in uids:
+            out.extend(by_user[u])
+        return out
+
+    return gather(train_u), gather(val_u), gather(test_u), (train_u, val_u, test_u)
+
+
+def standardize_by_train(train: np.ndarray, val: np.ndarray, test: np.ndarray, eps=1e-6):
+    train_flat = train.reshape(-1, train.shape[-1])
+    mu = np.nanmean(train_flat, axis=0)
+    sd = np.nanstd(train_flat, axis=0)
+
+    mu = np.where(np.isfinite(mu), mu, 0.0).astype(np.float32)
+    sd = np.where(np.isfinite(sd), sd, 1.0).astype(np.float32)
+    sd = np.maximum(sd, eps).astype(np.float32)
+
+    def fill_and_z(x):
+        x = x.copy().astype(np.float32)
+        nanmask = np.isnan(x)
+        if nanmask.any():
+            # axis 2 are features
+            x[nanmask] = np.take(mu, np.where(nanmask)[2])
+        x = (x - mu[None, None, :]) / sd[None, None, :]
+        if not np.isfinite(x).all():
+            raise ValueError("Non-finite after standardization.")
+        return x.astype(np.float32)
+
+    return fill_and_z(train), fill_and_z(val), fill_and_z(test), mu, sd
+
+
+def windows_to_TK(w_NLK: np.ndarray) -> np.ndarray:
+    return w_NLK.reshape(-1, w_NLK.shape[-1]).astype(np.float32)
+
+
+# -----------------------------
+# Loss on observed entries
+# -----------------------------
+def obs_mse_loss(Xhat: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
+    mask = torch.isfinite(X)
+    if mask.sum() == 0:
+        return torch.tensor(0.0, device=X.device)
+    return F.mse_loss(Xhat[mask], X[mask])
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data_dir", type=str, required=True,
+                    help="automatic-ou-gaitdata directory containing per-trial CSVs")
+    ap.add_argument("--seq_len", type=int, default=64)
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+
+    # TIDER
+    ap.add_argument("--tider_py", type=str, default="TIDER.py")
+
+    # training hyperparams
+    ap.add_argument("--epochs", type=int, default=500)
+    ap.add_argument("--batch_size", type=int, default=32, help="Batch size over channels")
+    ap.add_argument("--lr", type=float, default=0.05)
+
+    # regularizers
+    ap.add_argument("--eta", type=float, default=1e-2)
+    ap.add_argument("--lambda_ar", type=float, default=0.2)
+    ap.add_argument("--lambda_trend", type=float, default=0.1)
+    ap.add_argument("--dim_size", type=int, default=50)
+    ap.add_argument("--bias_dimension", type=int, default=5)
+    ap.add_argument("--lag_list", type=str, default="list(range(5))")
+    ap.add_argument("--season_num", type=int, default=30)
+    ap.add_argument("--seasonality", type=float, default=168.0)
+
+    # masking
+    ap.add_argument("--r_train_masked", type=float, default=0.15)
+    ap.add_argument("--lm", type=float, default=6.0)
+    ap.add_argument("--eval_masked_ratios", type=str, default="0.10,0.30,0.50,0.70")
+
+    # outputs
+    ap.add_argument("--out_txt", type=str, default="tider_gait_metrics.txt")
+    ap.add_argument("--save_path", type=str, default="TIDER_gait.pt")
+
+    args = ap.parse_args()
+    set_seed(args.seed)
+    device = torch.device(args.device)
+
+    TIDER = import_tider_class(args.tider_py)
+    ratios = parse_ratios(args.eval_masked_ratios)
+    lag_list = eval(args.lag_list)
+
+    # -------- data split (user-disjoint) + windows
+    files = list_gait_files(args.data_dir)
+    tr_files, va_files, te_files, (tr_users, va_users, te_users) = split_users(files, seed=args.seed)
+
+    train_raw = windows_from_files(tr_files, args.seq_len)
+    val_raw   = windows_from_files(va_files, args.seq_len)
+    test_raw  = windows_from_files(te_files, args.seq_len)
+
+    train_w, val_w, test_w, mu, sd = standardize_by_train(train_raw, val_raw, test_raw)
+
+    Ntr, Nva, Nte = len(train_w), len(val_w), len(test_w)
+    K = int(train_w.shape[-1])
+    Ttr = int(Ntr * args.seq_len)
+    Tva = int(Nva * args.seq_len)
+    Tte = int(Nte * args.seq_len)
+
+    full_TK = np.concatenate([windows_to_TK(train_w), windows_to_TK(val_w), windows_to_TK(test_w)], axis=0)
+    T_full = int(full_TK.shape[0])
+
+    X_full_KT = torch.from_numpy(full_TK.T).to(device)  # (K, T_full)
+
+    tr0, tr1 = 0, Ttr
+    va0, va1 = Ttr, Ttr + Tva
+    te0, te1 = Ttr + Tva, T_full
+
+    print(f"[data] #users train/val/test={len(tr_users)}/{len(va_users)}/{len(te_users)}  windows train/val/test={Ntr}/{Nva}/{Nte}  K={K}  L={args.seq_len}")
+
+    # train observations: only train segment observed
+    X_train_KT = torch.full((K, T_full), float("nan"), device=device)
+    X_train_KT[:, tr0:tr1] = X_full_KT[:, tr0:tr1]
+
+    rng_train = np.random.default_rng(args.seed + 12345)
+    keep_train = markov_keep_mask_KT(K, Ttr, args.r_train_masked, args.lm, rng_train)
+    keep_train_t = torch.from_numpy(keep_train).to(device)
+    X_train_KT[:, tr0:tr1] = torch.where(
+        keep_train_t > 0,
+        X_train_KT[:, tr0:tr1],
+        torch.tensor(float("nan"), device=device),
+    )
+
+    # val observations
+    X_val_KT = torch.full((K, T_full), float("nan"), device=device)
+    X_val_KT[:, va0:va1] = X_full_KT[:, va0:va1]
+
+    # -------- model
+    model = TIDER(
+        n=K,
+        t=T_full,
+        hid_size=args.dim_size,
+        bias_lag_list=lag_list,
+        bias_dim_=args.bias_dimension,
+        season_num_=args.season_num,
+        seasonality_=args.seasonality,
+    ).to(device)
+
+    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    # regularizers
+    def l2loss(eta: float):
+        if eta <= 0:
+            return torch.tensor(0.0, device=device)
+        roads_all = torch.arange(K, device=device)
+        times_all = torch.arange(T_full, device=device)
+        u = model.getu(roads_all)
+        v = model.getv(times_all)
+        return eta * (torch.linalg.norm(u) + torch.linalg.norm(v))
+
+    def arloss_bias(lambda_ar: float):
+        if lambda_ar <= 0:
+            return torch.tensor(0.0, device=device)
+        times_all = torch.arange(T_full, device=device)
+        y = model.bias_loss(times_all)
+        return lambda_ar * torch.linalg.norm(y)
+
+    def trend_loss(lambda_trend: float):
+        if lambda_trend <= 0:
+            return torch.tensor(0.0, device=device)
+        times_all = torch.arange(T_full, device=device)
+        trend = model.t_embeddings_trend(times_all)
+        diff = trend[:, 1:] - trend[:, :-1]
+        return lambda_trend * torch.linalg.norm(diff)
+
+    def forward_KT() -> torch.Tensor:
+        roads_all = torch.arange(K, device=device, dtype=torch.long)
+        return model(roads_all)
+
+    # -------- train with best val obs mse
+    best_val = float("inf")
+    best_ep = -1
+    idx = np.arange(K)
+
+    for ep in range(1, args.epochs + 1):
+        model.train()
+        np.random.shuffle(idx)
+        losses = []
+
+        for st in range(0, K, args.batch_size):
+            roads = torch.from_numpy(idx[st:st + args.batch_size]).to(device=device, dtype=torch.long)
+            Xhat = model(roads)       # (B, T_full)
+            Xobs = X_train_KT[roads]  # (B, T_full)
+
+            loss = obs_mse_loss(Xhat, Xobs) + l2loss(args.eta) + arloss_bias(args.lambda_ar) + trend_loss(args.lambda_trend)
+
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+            opt.step()
+            losses.append(float(loss.item()))
+
+        if ep == 1 or ep % 10 == 0:
+            model.eval()
+            with torch.no_grad():
+                Xhat_all = forward_KT()
+                val_loss = obs_mse_loss(Xhat_all[:, va0:va1], X_val_KT[:, va0:va1]).item() if (va1 > va0) else 0.0
+            print(f"[train] epoch={ep:03d} loss={float(np.mean(losses)):.6f}  val_obs_mse={val_loss:.6f}")
+            if val_loss < best_val:
+                best_val = val_loss
+                best_ep = ep
+                torch.save(model.state_dict(), args.save_path)
+
+    print(f"[train] best_epoch={best_ep} best_val_obs_mse={best_val:.6f}  saved={args.save_path}")
+
+    if os.path.exists(args.save_path):
+        model.load_state_dict(torch.load(args.save_path, map_location=device))
+    model.eval()
+
+    # -------- evaluation on test region with segment-based masking
+    if not os.path.exists(args.out_txt):
+        with open(args.out_txt, "w") as f:
+            f.write("split\tr_masked\tr_observed\tMAE\tMSE\tRMSE\n")
+
+    with torch.no_grad():
+        Xhat_all = forward_KT()            # (K, T_full)
+        gt_test = X_full_KT[:, te0:te1]    # (K, Tte)
+        pred_test = Xhat_all[:, te0:te1]
+
+        for r_m in ratios:
+            rng = np.random.default_rng(args.seed + int(round(r_m * 1000)) + 777)
+            keep = markov_keep_mask_KT(K, Tte, r_m, args.lm, rng)
+            keep_t = torch.from_numpy(keep).to(device).float()
+            evalmask = 1.0 - keep_t
+
+            finite = torch.isfinite(gt_test)
+            m = (evalmask > 0) & finite
+            den = m.sum().clamp_min(1)
+
+            diff = (pred_test - gt_test)
+            mae = (diff.abs()[m]).sum().item() / den.item()
+            mse = ((diff[m]) ** 2).sum().item() / den.item()
+            rmse = float(np.sqrt(mse))
+            r_obs = float(keep_t.mean().item())
+
+            print(f"[test] r_masked={r_m:.2f}  MAE={mae:.6f}  MSE={mse:.6f}  RMSE={rmse:.6f}  r_obs={r_obs:.2f}")
+            with open(args.out_txt, "a") as f:
+                f.write(f"test\t{r_m:.2f}\t{r_obs:.2f}\t{mae:.6f}\t{mse:.6f}\t{rmse:.6f}\n")
+
+    print(f"Done. Results appended to: {args.out_txt}")
+
+
+if __name__ == "__main__":
+    main()
+
