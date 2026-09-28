@@ -4,7 +4,7 @@ set -euo pipefail
 # =========================================================
 # Full ProCTI + baselines pipeline
 #
-# Place this file inside: procti_submission_code/
+# Place this file inside: ProCTI/
 #
 # It will:
 #   1) generate shared maskbanks (seeds 1..10)
