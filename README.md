@@ -1,4 +1,4 @@
-<div align="center">
+<div align="left">
 
 # ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation
 
@@ -9,7 +9,7 @@ University of Sydney · University of New South Wales
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-b31b1b.svg)](https://arxiv.org/pdf/2609.37632)
 
-<img src="assets/procti_overview.png" alt="ProCTI prototype-conditioning module" width="90%">
+<img src="ProCTI/assets/procti_overview.png" alt="ProCTI prototype-conditioning module" width="90%">
 
 </div>
 
