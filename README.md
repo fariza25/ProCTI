@@ -82,14 +82,6 @@ Output: `channeldropassets/`
 - `ProCTI/run_procti_ablations.sh` — ablation studies
 </details>
 
-<details>
-<summary><b>Step 4 — Run baselines</b></summary>
-
-BRITS, CSDI, Diffusion-TS, FGTI, iTransformer, MTSCI, PaD-TS, SCINet, TIDER.
-
-Scripts: `baselines/*/run_*_markovmask_and_channeldrop_10seeds.sh`
-</details>
-
 ## Reproducibility
 
 - **Seeds (default):** 1–10
