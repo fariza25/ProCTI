@@ -1,200 +1,123 @@
+<div align="center">
+
 # ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation
 
-Official repository of ProCTI: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation (NeurIPS 2026). This repository contains the full experimental pipeline for ProCTI and multiple baseline methods to reproduce the main results of the paper. 
+**Fariza Rashid, Duc Van Le, Rahat Masood, Gustavo Batista, Aruna Seneviratne, Suranga Seneviratne**
 
-The pipeline automatically:
+University of Sydney · University of New South Wales
 
-1. Creates shared Markov-mask evaluation maskbanks
-2. Creates channel-drop benchmark assets
-3. Runs ProCTI experiments (random Markov missingness, attribute-wise missingness, ablations)
-4. Runs all baseline experiments
-5. Saves logs, outputs, metrics, and intermediate assets
 
-------------------------------------------------------------
-Repository Structure
-------------------------------------------------------------
+[![Paper](https://img.shields.io/badge/Paper-PDF-b31b1b.svg)](https://arxiv.org/pdf/2609.37632)
 
+<img src="assets/procti_overview.png" alt="ProCTI prototype-conditioning module" width="90%">
+
+</div>
+
+---
+
+## Overview
+
+Diffusion-based imputation methods typically condition the reverse process on **local** context from the current or neighbouring windows, leaving dataset-level structure implicit. When local observations are sparse, noisy, or unrepresentative, that context can be insufficient.
+
+**ProCTI** augments local conditioning with **global** dataset-level priors retrieved from a learnable prototype bank:
+
+- Each partially observed window queries a bank of learned prototypes via multi-head cross-attention, producing a window-specific **regime vector**.
+- The regime vector is injected into the dominant-frequency branch of a frequency-aware diffusion backbone, with a learnable scale α controlling the strength of global correction.
+- A latent-regime analysis characterises **when** prototype-derived global conditioning provably improves imputation, and when it cannot (e.g. under strong cross-feature redundancy).
+---
+
+## Repository Structure
+
+```
 ProCTI/
+├── run_full_pipeline.sh     # end-to-end pipeline
+├── requirements.txt
+├── data/                    # datasets
+├── maskbanks/               # shared Markov evaluation masks
+├── channeldropassets/       # attribute-wise (channel-drop) assets
+├── ProCTI/                  # ProCTI model and experiment scripts
+├── baselines/               # baseline implementations
+└── _pipeline_logs/          # per-step pipeline logs
+```
 
-│── run_full_pipeline.sh
+## Quick Start
 
-│── requirements.txt
-
-│── data/
-
-│── maskbanks/
-
-│── channeldropassets/
-
-│── ProCTI/
-
-│── baselines/
-
-│── _pipeline_logs/
-
-
-------------------------------------------------------------
-1. Create Python Virtual Environment, Install Dependencies
-------------------------------------------------------------
-
+```bash
 python3 -m venv venv
 source venv/bin/activate
-
 pip install --upgrade pip
 pip install -r requirements.txt
 
-Depending on your CUDA / GPU setup, you may need to reinstall PyTorch separately.
-
-------------------------------------------------------------
-3. Run Full Experimental Pipeline
-------------------------------------------------------------
-
 chmod +x run_full_pipeline.sh
 ./run_full_pipeline.sh
+```
 
-------------------------------------------------------------
-What run_full_pipeline.sh Does
-------------------------------------------------------------
+> Depending on your CUDA / GPU setup, you may need to reinstall PyTorch separately.
 
-Step 1 — Generate Shared Markov Maskbanks
+## What the Pipeline Does
 
-Creates identical evaluation masks for fair benchmarking across models.
+`run_full_pipeline.sh` runs the following steps and saves logs, outputs, metrics, and intermediate assets.
 
-Generated for:
-- Beijing
-- Gait
-- PhysioNet
-- Stock
-- Weather
+<details>
+<summary><b>Step 1 — Generate shared Markov maskbanks</b></summary>
 
-Scripts used:
-make_beijing_maskbank.py
-make_gait_maskbank.py
-make_physionet_maskbank.py
-make_stock_maskbank.py
-make_weather_maskbank.py
+Creates identical evaluation masks for fair benchmarking across models, for Beijing, Gait, PhysioNet, Stock, and Weather.
 
-Output:
-maskbanks/
+Scripts: `make_beijing_maskbank.py`, `make_gait_maskbank.py`, `make_physionet_maskbank.py`, `make_stock_maskbank.py`, `make_weather_maskbank.py`
+Output: `maskbanks/`
+</details>
 
-------------------------------------------------------------
+<details>
+<summary><b>Step 2 — Generate channel-drop assets (attribute-wise missingness)</b></summary>
 
-Step 2 — Generate Channel-Drop Assets (Structured missingness)
+Scripts: `make_beijing_channeldrop_assets.py`, `make_weather_channeldrop_assets.py`, `make_shared_channeldrop_assets.py`, `make_physionet_channeldrop_assets_patientwise.py`, `make_gait_channeldrop_assets_userwise.py`
+Output: `channeldropassets/`
+</details>
+
+<details>
+<summary><b>Step 3 — Run ProCTI experiments</b></summary>
+
+- `ProCTI/run_procti_markovmask_10seeds.sh` — random Markov missingness
+- `ProCTI/run_procti_channeldrop_available_seeds.sh` — attribute-wise missingness
+- `ProCTI/run_procti_ablations.sh` — ablation studies
+</details>
+
+<details>
+<summary><b>Step 4 — Run baselines</b></summary>
+
+BRITS, CSDI, Diffusion-TS, FGTI, iTransformer, MTSCI, PaD-TS, SCINet, TIDER.
+
+Scripts: `baselines/*/run_*_markovmask_and_channeldrop_10seeds.sh`
+</details>
+
+## Reproducibility
+
+- **Seeds (default):** 1–10
+- **Missing ratios:** 10%, 30%, 50%, 70%
+
+## Citation
+
+If you find ProCTI useful in your research, please cite:
+
+```bibtex
+@inproceedings{rashid2026procti,
+  title     = {{ProCTI}: Prototype-Refined Global Conditioning for Diffusion-Based Time Series Imputation},
+  author    = {Rashid, Fariza and Le, Duc Van and Masood, Rahat and Batista, Gustavo and Seneviratne, Aruna and Seneviratne, Suranga},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2026}
+}
+```
 
 
-Generated for:
-- Beijing
-- Weather
-- Stock
-- PhysioNet
-- Gait
+Baselines were run using the following repositories, each subject to its own open-source license:
+[BRITS](https://github.com/Graph-Machine-Learning-Group/spin/tree/main) ·
+[CSDI](https://github.com/ermongroup/CSDI/tree/main) ·
+[SCINet](https://github.com/cure-lab/SCINet) ·
+[TIDER](https://github.com/liuwj2000/TIDER) ·
+[MTSCI](https://github.com/JeremyChou28/MTSCI) ·
+[Diffusion-TS](https://github.com/Y-debug-sys/Diffusion-TS/tree/main) ·
+[iTransformer](https://github.com/thuml/Time-Series-Library) ·
+[FGTI](https://github.com/FGTI2024/FGTI24/tree/main) ·
+[PaD-TS](https://github.com/wmd3i/PaD-TS)
 
-Scripts used:
-make_beijing_channeldrop_assets.py
-make_weather_channeldrop_assets.py
-make_shared_channeldrop_assets.py
-make_physionet_channeldrop_assets_patientwise.py
-make_gait_channeldrop_assets_userwise.py
 
-Output:
-channeldropassets/
-
-------------------------------------------------------------
-
-Step 3 — Run ProCTI Experiments
-
-Runs:
-ProCTI/run_procti_markovmask_10seeds.sh
-ProCTI/run_procti_channeldrop_available_seeds.sh
-ProCTI/run_procti_ablations.sh
-
-Includes:
-- Markov masking experiments
-- Structured misingness/Channel-drop experiments
-- Ablation studies
-
-------------------------------------------------------------
-
-Step 4 — Run Baseline Pipelines
-
-Runs all benchmark baselines:
-
-- BRITS
-- CSDI
-- Diffusion-TS
-- FGTI
-- iTransformer
-- MTSCI
-- PaD-TS
-- SCINet
-- TIDER
-
-Scripts automatically launched:
-baselines/*/run_*_markovmask_and_channeldrop_10seeds.sh
-
-------------------------------------------------------------
-Logs
-------------------------------------------------------------
-
-All pipeline logs are saved to:
-_pipeline_logs/
-
-Each step gets its own log file.
-
-All model logs are saved inside each model directory.
-Examples:
-ProCTI/procti_10seed_pipeline/logs
-ProCTI/procti_channeldrop_runs/logs
-ProCTI/procti_ablation_runs/logs
-baselines/FGTI/fgti_runs/markov/logs
-baselines/csdi/csdi_runs/markov/logs
-
-------------------------------------------------------------
-Outputs
-------------------------------------------------------------
-
-Results are saved inside each model directory.
-
-Examples:
-ProCTI/procti_10seed_pipeline/metrics
-ProCTI/procti_channeldrop_runs/metrics
-ProCTI/procti_ablation_runs/metrics
-baselines/csdi/csdi_runs/markov/metrics
-baselines/FGTI/fgti_runs/markov/metrics
-baselines/FGTI/fgti_runs/channeldrop/metrics
-
-------------------------------------------------------------
-Reproducibility
-------------------------------------------------------------
-
-Seeds used by default:
-1 2 3 4 5 6 7 8 9 10
-
-Mask ratios:
-10%, 30%, 50%, 70%
-
-------------------------------------------------------------
-Quick Start
-------------------------------------------------------------
-
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-chmod +x run_full_pipeline.sh
-./run_full_pipeline.sh
-
-------------------------------------------------------------
-External Assets
-------------------------------------------------------------
-
-The following github repositories were accessed to run the baseline models:
-1. BRITS: https://github.com/Graph-Machine-Learning-Group/spin/tree/main
-2. CSDI: https://github.com/ermongroup/CSDI/tree/main
-3. SCINet: https://github.com/cure-lab/SCINet
-4. TIDER: https://github.com/liuwj2000/TIDER
-6. MTSCI: https://github.com/JeremyChou28/MTSCI
-7. Diffusion-TS: https://github.com/Y-debug-sys/Diffusion-TS/tree/main
-8. iTransformer: https://github.com/thuml/Time-Series-Library
-9. FGTI: https://github.com/FGTI2024/FGTI24/tree/main
-10. PaD-TS: https://github.com/wmd3i/PaD-TS
-All repositories were used subject to their respective open-source licenses.
